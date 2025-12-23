@@ -8,6 +8,10 @@ declare global {
   var prismaPgPool: Pool | undefined;
 }
 
+if (!process.env.DATABASE_URL) {
+  throw new Error("Missing DATABASE_URL. Set it in your environment (Vercel Env Vars or local .env).");
+}
+
 const pool =
   global.prismaPgPool ??
   new Pool({
