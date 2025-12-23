@@ -1,0 +1,5 @@
+/* This file is intentionally kept as a compatibility shim.
+ * The app now imports global styles from src/styles/globals.css.
+ */
+
+@import "../styles/globals.css";

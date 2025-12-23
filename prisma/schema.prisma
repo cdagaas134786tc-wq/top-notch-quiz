@@ -1,0 +1,205 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum QuestionType {
+  SINGLE_CHOICE
+  MULTIPLE_CHOICE
+}
+
+enum AttemptStatus {
+  IN_PROGRESS
+  SUBMITTED
+  GRADED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  image        String?
+  passwordHash String?
+  role         Role     @default(USER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  accounts Account[]
+  sessions Session[]
+
+  attempts Attempt[]
+  quizzes  Quiz[]    @relation("QuizCreatedBy")
+
+  @@index([role])
+}
+
+// NextAuth.js (Prisma Adapter) models
+// Keep these in the same schema so adapter can persist OAuth accounts.
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Category {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  quizzes Quiz[]
+
+  @@unique([name])
+}
+
+model Quiz {
+  id               String   @id @default(cuid())
+  title            String
+  description      String?
+  isPublished      Boolean  @default(false)
+  timeLimitSeconds Int?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  createdById String
+  createdBy   User   @relation("QuizCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  questions Question[]
+  attempts  Attempt[]
+
+  @@index([categoryId])
+  @@index([createdById])
+  @@index([isPublished])
+}
+
+model Question {
+  id        String       @id @default(cuid())
+  prompt    String
+  hint      String?
+  rationale String?
+  type      QuestionType @default(SINGLE_CHOICE)
+  order     Int
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  quizId String
+  quiz   Quiz   @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  choices Choice[]
+  answers Answer[]
+
+  @@unique([quizId, order])
+  @@index([quizId])
+}
+
+model Choice {
+  id        String   @id @default(cuid())
+  text      String
+  isCorrect Boolean  @default(false)
+  order     Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  // Many-to-many: answers can select multiple choices.
+  answers Answer[]
+
+  @@unique([questionId, order])
+  @@index([questionId])
+}
+
+model Attempt {
+  id          String        @id @default(cuid())
+  status      AttemptStatus @default(IN_PROGRESS)
+  attemptNo   Int
+  startedAt   DateTime      @default(now())
+  submittedAt DateTime?
+  score       Int? // e.g. number of correct answers
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  quizId String
+  quiz   Quiz   @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  answers Answer[]
+
+  @@unique([userId, quizId, attemptNo])
+  @@index([userId])
+  @@index([quizId])
+  @@index([status])
+}
+
+model Answer {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  attemptId String
+  attempt   Attempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Restrict)
+
+  // Many-to-many: supports multiple-choice questions.
+  choices Choice[]
+
+  @@unique([attemptId, questionId])
+  @@index([attemptId])
+  @@index([questionId])
+}
