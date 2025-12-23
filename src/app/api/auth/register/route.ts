@@ -45,25 +45,31 @@ export async function POST(req: NextRequest) {
     return jsonError("Password must be at least 8 characters.", { status: 400, headers });
   }
 
-  const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
-  if (existing) {
-    return jsonError("Email already in use.", { status: 409, headers });
+  try {
+    const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+    if (existing) {
+      return jsonError("Email already in use.", { status: 409, headers });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+
+    const adminSecret = process.env.ADMIN_REGISTRATION_SECRET;
+    const role = adminSecret && adminCode && adminCode === adminSecret ? "ADMIN" : "USER";
+
+    const user = await prisma.user.create({
+      data: {
+        email: normalizedEmail,
+        name: displayName,
+        passwordHash,
+        role,
+      },
+      select: { id: true, email: true, role: true, createdAt: true },
+    });
+
+    return jsonOk({ ok: true, user }, { status: 201, headers });
+  } catch (err) {
+    console.error("Register error:", err);
+    const message = err instanceof Error ? err.message : "Registration failed";
+    return jsonError(message, { status: 500, headers });
   }
-
-  const passwordHash = await bcrypt.hash(password, 12);
-
-  const adminSecret = process.env.ADMIN_REGISTRATION_SECRET;
-  const role = adminSecret && adminCode && adminCode === adminSecret ? "ADMIN" : "USER";
-
-  const user = await prisma.user.create({
-    data: {
-      email: normalizedEmail,
-      name: displayName,
-      passwordHash,
-      role,
-    },
-    select: { id: true, email: true, role: true, createdAt: true },
-  });
-
-  return jsonOk({ ok: true, user }, { status: 201, headers });
 }
