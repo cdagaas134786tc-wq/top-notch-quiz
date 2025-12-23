@@ -8,26 +8,41 @@ declare global {
   var prismaPgPool: Pool | undefined;
 }
 
-function getPool() {
-  if (!process.env.DATABASE_URL) {
+function getPool(): Pool {
+  if (global.prismaPgPool) return global.prismaPgPool;
+
+  const url = process.env.DATABASE_URL;
+  if (!url) {
     throw new Error("Missing DATABASE_URL. Set it in your environment (Vercel Env Vars or local .env).");
   }
-  return new Pool({
-    connectionString: process.env.DATABASE_URL,
+
+  const pool = new Pool({
+    connectionString: url,
     ...(process.env.NODE_ENV === "production" ? { ssl: { rejectUnauthorized: false } } : {}),
   });
+
+  if (process.env.NODE_ENV !== "production") {
+    global.prismaPgPool = pool;
+  }
+
+  return pool;
 }
 
-const pool = global.prismaPgPool ?? getPool();
+function getPrisma(): PrismaClient {
+  if (global.prisma) return global.prisma;
 
-if (process.env.NODE_ENV !== "production") {
-  global.prismaPgPool = pool;
+  const adapter = new PrismaPg(getPool());
+  const client = new PrismaClient({ adapter });
+
+  if (process.env.NODE_ENV !== "production") {
+    global.prisma = client;
+  }
+
+  return client;
 }
 
-const adapter = new PrismaPg(pool);
-
-export const prisma = global.prisma ?? new PrismaClient({ adapter });
-
-if (process.env.NODE_ENV !== "production") {
-  global.prisma = prisma;
-}
+export const prisma = new Proxy({} as PrismaClient, {
+  get(_target, prop) {
+    return getPrisma()[prop as keyof PrismaClient];
+  },
+});
